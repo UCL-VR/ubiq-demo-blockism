@@ -4,10 +4,8 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.Events;
 using Ubiq.Messaging;
-using Ubiq.Rooms;
 
-
-public class GameManager : MonoBehaviour, INetworkComponent, INetworkObject
+public class GameManager : MonoBehaviour
 {
     // Helper Signs
     public List<GameObject> helperSigns;
@@ -55,7 +53,7 @@ public class GameManager : MonoBehaviour, INetworkComponent, INetworkObject
 
 
     // Networking components
-    NetworkId INetworkObject.Id => new NetworkId("a13ba05dbb9ef8fc");
+    public NetworkId NetworkId => new NetworkId("a13ba05dbb9ef8fc");
     private NetworkContext context;
 
     // Blueprint Room Door

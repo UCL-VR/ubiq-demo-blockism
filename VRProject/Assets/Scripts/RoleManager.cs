@@ -1,20 +1,24 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Ubiq.Avatars;
 using Ubiq.Messaging;
 using Ubiq.Rooms;
+using Ubiq.Samples;
 using UnityEngine;
 
 
-public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
+public class RoleManager : MonoBehaviour
 {
     private List<string> roles = new List<string> { "red", "yellow", "blue", "green" };
+
+    private List<Color> role_colors = new List<Color> { Color.red, Color.yellow, Color.blue, Color.green };
 
     private NetworkContext context;
 
     private RoomClient room_client;
 
-    private Ubiq.Avatars.AvatarManager avatar_manager;
+    private AvatarManager avatar_manager;
 
     // set of variables for messages
     private List<string> avatar_ids;
@@ -22,11 +26,13 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
     private string master_peer_id;
     // set of variables for messages
 
-    NetworkId INetworkObject.Id => new NetworkId("a15ca05dbb9ef8ec");
+    public NetworkId NetworkId => new NetworkId("a15ca05dbb9ef8ec");
 
     private string room_id;
 
     private static System.Random rng;
+
+    public Texture2D avatarTextureTemplate;
 
     struct Message
     {
@@ -51,36 +57,84 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
 
         context = NetworkScene.Register(this);
 
-        room_client = context.scene.GetComponentInChildren<RoomClient>();
+        room_client = context.Scene.GetComponentInChildren<RoomClient>();
 
         room_client.OnPeerAdded.AddListener(OnPeerAdded);
 
         room_client.OnJoinedRoom.AddListener(OnJoinedRoom);
 
-        /*room_client.OnRoomUpdated.AddListener(OnRoomUpdated);*/
+        avatar_manager = AvatarManager.Find(this);
 
-        /*room_client.OnRoomsDiscovered.AddListener(OnRoomsDiscovered);*/
+        if(avatar_manager.OnAvatarCreated == null)
+        {
+            avatar_manager.OnAvatarCreated = new AvatarManager.AvatarCreatedEvent();
+        }
+        avatar_manager.OnAvatarCreated.AddListener(OnAvatarCreated);
+    }
 
-        avatar_manager = GameObject.Find("Avatar Manager").GetComponent<Ubiq.Avatars.AvatarManager>();
+    private struct AvatarTextureCache
+    {
+        public string role;
+        public Texture2D texture;
+    }
+
+    private Dictionary<Ubiq.Avatars.Avatar, AvatarTextureCache> avatar_texture_cache = new Dictionary<Ubiq.Avatars.Avatar, AvatarTextureCache>();
+
+    void OnAvatarCreated(Ubiq.Avatars.Avatar avatar)
+    {
+        // when a peer gets or changes its role, update the avatar texture
+
+        if (!avatar_texture_cache.ContainsKey(avatar))
+            avatar_texture_cache[avatar] = new AvatarTextureCache();
+
+        var cache = avatar_texture_cache[avatar];
+        var role = avatar.Peer["blockism.color"];
+
+        if(cache.role != role)
+        {
+            // update the texture
+            var texture_manager = avatar.GetComponent<TexturedAvatar>();
+            var existing = texture_manager.GetTexture();
+
+            if(existing == null)
+            {
+                return;
+            }
+
+            var tint = role_colors[roles.IndexOf(role)];
+
+            cache.texture = new Texture2D(existing.width, existing.height);
+
+            for (int x = 0; x < existing.width; x++)
+            {
+                for (int y = 0; y < existing.height; y++)
+                {
+                    var pixel = avatarTextureTemplate.GetPixel(x, y);
+                    if (pixel.a > 0)
+                    {
+                        cache.texture.SetPixel(x, y, Color.Lerp(pixel, tint, 0.75f));
+                    }
+                    else
+                    {
+                        cache.texture.SetPixel(x, y, existing.GetPixel(x, y));
+                    }
+                }
+            }
+            cache.texture.Apply();
+
+            foreach(var item in avatar.GetComponentsInChildren<MeshRenderer>())
+            {
+                item.material.mainTexture = cache.texture;
+            }
+
+            cache.role = role;
+        }
     }
 
     void Update()
     {
-        /*if (Time.realtimeSinceStartup > next_room_refresh_time)
-        {
-            next_room_refresh_time = Time.realtimeSinceStartup + room_refresh_rate;
-
-            room_client.DiscoverRooms();
-
-            discover_rooms_count++;
-
-            if (discover_rooms_count == 2 && string.IsNullOrEmpty(room_client.Room.Name))
-            {
-                room_client.Join(name: room_name, publish: true);
-            }
-        }*/
-
         // check if master peer has left and pick a new one 
+
         if (room_client.Room.UUID == room_id && !string.IsNullOrEmpty(master_peer_id))
         {
             var avatars = avatar_manager.Avatars;
@@ -88,7 +142,7 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
 
             foreach (var avatar in avatars)
             {
-                if (avatar.Peer.UUID == master_peer_id)
+                if (avatar.Peer.uuid == master_peer_id)
                 {
                     found_master = true;
                     break;
@@ -100,14 +154,14 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
                 RemoveAvatarAndRole(master_peer_id);
 
                 // select self as master peer 
-                master_peer_id = avatars.First().Peer.UUID;
+                master_peer_id = avatars.First().Peer.uuid;
 
                 SendMessageUpdate();
             }
         }
 
         // check if the a peer has left and update lists if they have (only for master peer)
-        if ((room_client.Room.UUID == room_id) && (room_client.Me.UUID == master_peer_id))
+        if ((room_client.Room.UUID == room_id) && (room_client.Me.uuid == master_peer_id))
         {
             var avatars = avatar_manager.Avatars;
 
@@ -119,7 +173,7 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
 
                 foreach (var avatar in avatars)
                 {
-                    if (avatar.Peer.UUID == id)
+                    if (avatar.Peer.uuid == id)
                     {
                         id_found = true;
                         break;
@@ -138,20 +192,6 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
             SendMessageUpdate();
         }
     }
-
-    /*private void OnRoomsDiscovered(List<IRoom> rooms, RoomsDiscoveredRequest request)
-    {
-        if (string.IsNullOrEmpty(request.joincode))
-        {
-            foreach (var room in rooms)
-            {
-                if (room.Name == room_name)
-                {
-                    room_client.Join(room.JoinCode);
-                }
-            }
-        }
-    }*/
 
     private void AddAvatarAndRole(string avatar_id, string color)
     {
@@ -177,23 +217,19 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
     public void ShuffleRoles()
     {
         // only master peer can change roles and send message updates 
-        if (room_client.Me.UUID != master_peer_id)
+        if (room_client.Me.uuid != master_peer_id)
         {
             return;
         }
 
-        var avatars = avatar_manager.Avatars;
-        var role_check = avatar_roles;
-        int no_of_avatars = avatars.Count();
-
         // shuffle elements in avatar roles 
         avatar_roles.OrderBy(role => rng.Next()).ToList();
 
-        var local_avatar = avatar_manager.LocalAvatar;
-
-        var prefab = avatar_manager.AvatarCatalogue.prefabs[roles.IndexOf(local_avatar.color)];
-
-        room_client.Me["ubiq.avatar.prefab"] = prefab.name;
+        // change prefab if at the client of an avatar
+        foreach (var avatar in avatar_manager.Avatars)
+        {
+            OnAvatarCreated(avatar);
+        }
 
         SendMessageUpdate();
     }
@@ -211,14 +247,6 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
 
     private void OnJoinedRoom(IRoom room)
     {
-        var avatars = avatar_manager.Avatars;
-
-        // room with more than 1 avatar already has master peer
-        if (avatars.Count() > 1)
-        {
-            return;
-        }
-
         // do not set master peer for empty room 
         if (string.IsNullOrEmpty(room.JoinCode)
                 && string.IsNullOrEmpty(room.Name)
@@ -227,20 +255,31 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
             return;
         }
 
+        // check if the room has a master peer set
+        if (!string.IsNullOrEmpty(room["blockism.master"]))
+        {
+            return;
+        }
+
+        // the room has not had the master property set yet, so we must be the
+        // first
+
         // set first avatar as master peer      
-        var owner_avatar = avatars.First();
-        master_peer_id = owner_avatar.Peer.UUID;
-        owner_avatar.color = roles.First();
+        master_peer_id = room_client.Me.uuid;
 
-        var prefab = avatar_manager.AvatarCatalogue.prefabs[roles.IndexOf(owner_avatar.color)];
+        var role = roles.First();
+        room_client.Me["blockism.color"] = role;
 
-        room_client.Me["ubiq.avatar.prefab"] = prefab.name;
+        foreach (var item in avatar_manager.Avatars)
+        {
+            OnAvatarCreated(item);
+        }
 
         avatar_ids = new List<string>();
         avatar_roles = new List<string>();
 
-        avatar_ids.Add(owner_avatar.Peer.UUID);
-        avatar_roles.Add(owner_avatar.color);
+        avatar_ids.Add(room_client.Me.uuid);
+        avatar_roles.Add(role);
         room_id = room.UUID;
 
         SendMessageUpdate();
@@ -249,27 +288,28 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
     private void OnPeerAdded(IPeer peer)
     {
         // Attach roles and modify dict only if it is master peer's room 
-        if (room_client.Me.UUID != master_peer_id)
+        if (room_client.Me.uuid != master_peer_id)
         {
             return;
         }
 
-        var avatars = avatar_manager.Avatars;
         Dictionary<string, int> role_count = new Dictionary<string, int>();
 
         // loop through roles and initiate Dict  
         roles.ForEach(role => role_count.Add(role, 0));
 
-        foreach (var avatar in avatars)
+        foreach (var avatar in room_client.Peers)
         {
+            var role = avatar["blockism.color"];
+
             // avatar already has a role 
-            if (!string.IsNullOrEmpty(avatar.color))
+            if (!string.IsNullOrEmpty(role))
             {
                 // register the role with the Dict 
-                role_count[avatar.color] += 1;
+                role_count[role] += 1;
 
                 // mainain an internal list of ids and roles 
-                AddAvatarAndRole(avatar.Peer.UUID, avatar.color);
+                AddAvatarAndRole(avatar.uuid, role);
             }
         }
 
@@ -277,49 +317,17 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
         var new_role = role_count.Aggregate((l, r) => l.Value < r.Value ? l : r).Key;
 
         // update lists 
-        AddAvatarAndRole(peer.UUID, new_role);
+        AddAvatarAndRole(peer.uuid, new_role);
 
         SendMessageUpdate();
     }
 
-    /*private void OnRoomUpdated(IRoom room)
-    {
-        // peer is leaving room if room name, uuid and join code are null 
-        if (string.IsNullOrEmpty(room.JoinCode) 
-                && string.IsNullOrEmpty(room.Name) 
-                && string.IsNullOrEmpty(room.UUID))
-        {
-            // if peer used to be master, pick a new master and send a messge update 
-            if (master_peer_id == room_client.Me.UUID)
-            {
-                // remove ourselves from lists
-                RemoveAvatarAndRole(room_client.Me.UUID);
-
-                // choose someone else as master
-                if (avatar_ids.Count() > 0)
-                {
-                    master_peer_id = avatar_ids[0];
-
-                    // send message update
-                    SendMessageUpdate();
-                }
-
-            }
-
-            // reset variables since we are entering empty room
-            avatar_ids = new List<string>();
-            avatar_roles = new List<string>();
-            master_peer_id = "";
-        }
-
-    }*/
-
-    void INetworkComponent.ProcessMessage(ReferenceCountedSceneGraphMessage message)
+    public void ProcessMessage(ReferenceCountedSceneGraphMessage message)
     {
         var msg = message.FromJson<Message>();
 
         // utilize message update only if not master peer 
-        if (msg.master_peer_id == room_client.Me.UUID)
+        if (msg.master_peer_id == room_client.Me.uuid)
         {
             return;
         }
@@ -333,24 +341,7 @@ public class RoleManager : MonoBehaviour, INetworkComponent, INetworkObject
         // change prefab if at the client of an avatar
         foreach (var avatar in avatar_manager.Avatars)
         {
-            var avatar_index = avatar_ids.IndexOf(avatar.Peer.UUID);
-
-            if (avatar_index == -1)
-            {
-                continue;
-            }
-
-            if (avatar.Peer.UUID == room_client.Me.UUID)
-            {
-                // get the index of the role that was picked out for this avatar 
-                var avatar_role_index = roles.IndexOf(avatar_roles[avatar_index]);
-                // use the above index to pick out the correct prefab 
-                var prefab = avatar_manager.AvatarCatalogue.prefabs[avatar_role_index];
-
-                // set the room client peer's prefab name and
-                // avatar manager will update the prefab on all clients
-                room_client.Me["ubiq.avatar.prefab"] = prefab.name;
-            }
+            OnAvatarCreated(avatar);
         }
     }
 

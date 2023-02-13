@@ -6,7 +6,7 @@ using Ubiq.Messaging;
 using Ubiq.XR;
 using Ubiq.Rooms;
 
-public class HitBox : MonoBehaviour, INetworkComponent, INetworkObject
+public class HitBox : MonoBehaviour
 {
 
     private GameObject thisHitBox;
@@ -20,7 +20,7 @@ public class HitBox : MonoBehaviour, INetworkComponent, INetworkObject
     public NetworkId shared_id;
     private NetworkContext context;
     // 16-digit hex
-    NetworkId INetworkObject.Id => new NetworkId("f8cdba13a15f5e6d");
+    public NetworkId NetworkId => new NetworkId("f8cdba13a15f5e6d");
 
     struct Message
     {
@@ -34,7 +34,7 @@ public class HitBox : MonoBehaviour, INetworkComponent, INetworkObject
         }
     }
 
-    void INetworkComponent.ProcessMessage(ReferenceCountedSceneGraphMessage message)
+    public void ProcessMessage(ReferenceCountedSceneGraphMessage message)
     {
         var msg = message.FromJson<Message>();
         if (msg.who == shared_id)
@@ -157,7 +157,6 @@ public class HitBox : MonoBehaviour, INetworkComponent, INetworkObject
             float smallestVolumn = Math.Min(volumn1, volumn2);
 
             // Return an estimate of the percent of two colliders are intersecting each other
-            Debug.Log(smallestVolumn / (x_intersection * y_intersection * z_intersection));
             return smallestVolumn / (x_intersection * y_intersection * z_intersection);
         }
 

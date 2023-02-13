@@ -6,9 +6,8 @@ using Ubiq.XR;
 using System;
 using Ubiq.Rooms;
 
-public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObject
+public class Block : MonoBehaviour, IGraspable
 {
-
     public Hand grasped;
 
     private NetworkContext context;
@@ -16,7 +15,7 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
     public Block rootBlock = null;
 
     // 16-digit hex
-    NetworkId INetworkObject.Id => new NetworkId("f8cdefa3a15f5e6d");
+    NetworkId NetworkId => new NetworkId("f8cdefa3a15f5e6d");
 
     public NetworkId shared_id;
 
@@ -33,10 +32,6 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
     public bool filling;
 
     public int colourIdx;
-
-    private Ubiq.Avatars.AvatarManager avatar_manager;
-
-    private Ubiq.Avatars.Avatar local_avatar = null; 
 
     // Block messaged used to communicate position, ownership and physics
     struct Message
@@ -60,7 +55,7 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
     }
 
     // Update block transform, ownership and physics
-    void INetworkComponent.ProcessMessage(ReferenceCountedSceneGraphMessage message)
+    public void ProcessMessage(ReferenceCountedSceneGraphMessage message)
     {
         var msg = message.FromJson<Message>();
 
@@ -82,7 +77,7 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
         // Set up networking componenets
         context = NetworkScene.Register(this);
 
-        client = context.scene.GetComponentInChildren<RoomClient>();
+        client = context.Scene.GetComponentInChildren<RoomClient>();
 
         client.OnPeerAdded.AddListener(OnPeerAdded);
 
@@ -95,9 +90,6 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
 
         // Root block is always initally itself
         rootBlock = this;
-
-        // Find the avatar manager in the scene (used to determine which blocks can be picked up)
-        avatar_manager = GameObject.Find("Avatar Manager").GetComponent<Ubiq.Avatars.AvatarManager>();
     }
 
     // Send info about block transform, ownership and physics
@@ -116,8 +108,7 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
     // Called when a new player joins the room
     private void OnPeerAdded(IPeer peer)
     {
-
-        if (client.Me.UUID == last_owner_id)
+        if (client.Me.uuid == last_owner_id)
         {
             SendMessageUpdate();
         }
@@ -131,18 +122,9 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
             return;
         }
 
-        // Find the local avatar (the player on this computer)
-        var avatars = avatar_manager.Avatars;
-        foreach (var avatar in avatars)
-        {
-            if (avatar.IsLocal)
-            {
-                local_avatar = avatar;
-            }
-        }
-
         // If the block is the wrong colour, it cannot be picked up
-        if (!color.Contains(local_avatar.color) || string.IsNullOrEmpty(local_avatar.color))
+        var my_color = client.Me["blockism.color"];
+        if (string.IsNullOrEmpty(my_color) || !color.Contains(my_color))
         {
             return;
         }
@@ -155,7 +137,7 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
         rootBlock.rb.isKinematic = true;
 
         // Update the most recent owner
-        last_owner_id = client.Me.UUID;
+        last_owner_id = client.Me.uuid;
 
         // Send message to all other peers
         SendMessageUpdate();
@@ -205,7 +187,7 @@ public class Block : MonoBehaviour, IGraspable, INetworkComponent, INetworkObjec
     void FixedUpdate()
     {
         // If the block is held by a player
-        if (being_grasped && grasped && last_owner_id == client.Me.UUID)
+        if (being_grasped && grasped && last_owner_id == client.Me.uuid)
         {
             // Match the position and orientation of the hand
             rootBlock.transform.position = grasped.transform.position;

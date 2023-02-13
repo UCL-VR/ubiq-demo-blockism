@@ -6,7 +6,7 @@ using Ubiq.XR;
 using System;
 using Ubiq.Rooms;
 
-public class SubmissionArea : MonoBehaviour, INetworkComponent, INetworkObject
+public class SubmissionArea : MonoBehaviour
 {
     //Score board components
     public TMPro.TextMeshProUGUI scoreText;
@@ -18,7 +18,7 @@ public class SubmissionArea : MonoBehaviour, INetworkComponent, INetworkObject
 
     // Networking 
     private NetworkContext context;
-    NetworkId INetworkObject.Id => new NetworkId("58e19a43a15f5f1a");
+    public NetworkId NetworkId => new NetworkId("58e19a43a15f5f1a");
 
     // Network message containing info about the block submitted and its score
     struct Message
@@ -33,7 +33,7 @@ public class SubmissionArea : MonoBehaviour, INetworkComponent, INetworkObject
         }
     }
 
-    void INetworkComponent.ProcessMessage(ReferenceCountedSceneGraphMessage message)
+    public void ProcessMessage(ReferenceCountedSceneGraphMessage message)
     {
         var msg = message.FromJson<Message>();
         NetworkId blockId = msg.blockId;
@@ -101,8 +101,6 @@ public class SubmissionArea : MonoBehaviour, INetworkComponent, INetworkObject
 
     private void SubmitStructure(GameObject other, int score)
     {
-        
-
         // Update score
         GameManager.score += score;
         scoreText.text = "$" + (GameManager.score * 10).ToString();
