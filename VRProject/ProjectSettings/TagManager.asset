@@ -8,6 +8,7 @@ TagManager:
   - green
   - red
   - yellow
+  - Teleport
   layers:
   - Default
   - TransparentFX
